@@ -125,14 +125,90 @@ def train(fold):
         auc = metrics.roc_auc_score(valid_targets, predictions) #this is why valid_data should not be shuffled as opposed to training data
         scheduler.step(auc)
         print("epoch={}, auc={}".format(epoch, auc))
-        es(auc, model, model_path)
+        es(auc, model, os.path.join(model_path, f"model{fold}.bin"))
         if es.early_stop:
             print('early stopping')
             break
 
 
+def predict(fold):
+    test_data_path = ''
+    model_path = ""
+    df_test = pd.read_csv("/.../test.csv")
+    df_test.loc[:, 'target'] = 0
+ 
+    epochs = 50
+    device = 'cuda'
+    test_bs = 32 #train batch size 
+    #valid_bs = 16
+
+    #normalize image pixel values
+    mean = (0.485, 0.456, 0.406) #these values are for this model
+    std = (0.229, 0.224, 0.225)
+
+    #df_train = df[df.kfold != fold].reset_index(drop=True) #absolutely removes the previous index
+    #df_valid = df[df.kfold == fold].reset_index(drop=True)  
+    
+    #for image augmentation
+    test_aug = albumentations.Compose(
+        [
+           albumentations.Normalize(mean, std, max_pixel_value=255.0, always_apply=True), 
+        ]
+    )
+
+
+    test_images = df_test.image_name.values.tolist()
+    test_images = [os.path.join(testing_data_path, i+'.jpg') for i in test_images]
+    test_targets = df_test.target.values 
+
+
+    test_dataset = ClassificationLoader(
+        image_paths = test_images,
+        targets=test_targets,
+        resize=None,
+        augmentation=test_aug
+    )
+
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset, 
+        batch_size=test_bs,
+        shuffle=True,
+        num_workers=4
+    )
+
+    model = SEResNext50_32x4d(pretrained='imagenet')
+    model.load_state_dict(torch.load(os.path.join(model_path, f"model{fold}")))
+    model.to(device)
+
+    predictions = Engine.predict(
+        test_loader, model, device 
+    )
+    return np.vstack((predictions)).ravel()
+
+
+
+
+
 if __name__ == "__main__":
     train(fold=0) #train for fold 0
+
+    predict(fold=0) #prediction for fold 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
